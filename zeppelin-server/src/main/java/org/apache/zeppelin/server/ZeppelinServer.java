@@ -79,35 +79,22 @@ public class ZeppelinServer extends Application {
   private static String KEYTAB = "keyTab";
   private static String PRINCIPAL = "principal";
 
-  private static Configuration createKerberosConfig() {
-    Configuration conf = new Configuration();
-    try {
-      String keyTab = JaasUtils.jaasConfig(ZEPPELIN_SERVER_LOGIN_CONTEXT, KEYTAB);
-      String principal = JaasUtils.jaasConfig(ZEPPELIN_SERVER_LOGIN_CONTEXT, PRINCIPAL);
-      conf.set(keyTab, keyTab);
-      conf.set(principal, principal);
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
-    return conf;
-  }
-
   public ZeppelinServer() throws Exception {
     ZeppelinConfiguration conf = ZeppelinConfiguration.create();
 
     this.depResolver = new DependencyResolver(
-        conf.getString(ConfVars.ZEPPELIN_INTERPRETER_LOCALREPO));
+      conf.getString(ConfVars.ZEPPELIN_INTERPRETER_LOCALREPO));
     this.schedulerFactory = new SchedulerFactory();
     this.replFactory = new InterpreterFactory(conf, notebookWsServer,
-            notebookWsServer, depResolver);
+      notebookWsServer, depResolver);
 
     this.notebookRepo = new NotebookRepoSync(conf);
     this.notebookIndex = new LuceneSearch();
     this.notebookAuthorization = new NotebookAuthorization(conf);
     this.credentials = new Credentials(conf.credentialsPersist(), conf.getCredentialsPath());
     notebook = new Notebook(conf,
-        notebookRepo, schedulerFactory, replFactory, notebookWsServer,
-            notebookIndex, notebookAuthorization, credentials);
+      notebookRepo, schedulerFactory, replFactory, notebookWsServer,
+      notebookIndex, notebookAuthorization, credentials);
   }
 
   public static void main(String[] args) throws InterruptedException {
@@ -177,6 +164,23 @@ public class ZeppelinServer extends Application {
     final Server server = new Server();
     ServerConnector connector;
 
+    try {
+      final boolean isKerberos = conf.getBoolean("ZEPPELIN_KERBEREOS_ENABLED");
+      if (isKerberos) {
+        Configuration configuration = new Configuration();
+        String keyTab = JaasUtils.jaasConfig(ZEPPELIN_SERVER_LOGIN_CONTEXT, KEYTAB);
+        String principal = JaasUtils.jaasConfig(ZEPPELIN_SERVER_LOGIN_CONTEXT, PRINCIPAL);
+        configuration.set(keyTab, keyTab);
+        configuration.set(principal, principal);
+        SecurityUtil.login(configuration, keyTab, principal);
+        LOG.info("Zeppelin Kerberos login successful.");
+      }
+    } catch (Exception e) {
+      LOG.error("Unable to login to GSS successfully", e);
+      LOG.error("Aborting start of zeppelin server, as it cannot authenticate itself ", e);
+      System.exit(1);
+    }
+
     if (conf.useSsl()) {
 
       HttpConfiguration httpConfig = new HttpConfiguration();
@@ -210,22 +214,6 @@ public class ZeppelinServer extends Application {
     connector.setHost(conf.getServerAddress());
     connector.setPort(conf.getServerPort());
     server.addConnector(connector);
-
-    try {
-
-      final boolean isKerberos = conf.getBoolean("ZEPPELIN_KERBEREOS_ENABLED");
-      // handle secure cluster credentials
-      if (isKerberos) {
-        SecurityUtil.login(createKerberosConfig(),
-          JaasUtils.jaasConfig(ZEPPELIN_SERVER_LOGIN_CONTEXT, KEYTAB),
-          JaasUtils.jaasConfig(ZEPPELIN_SERVER_LOGIN_CONTEXT, PRINCIPAL));
-        LOG.info("Login successful.");
-      }
-    } catch (Exception e) {
-      LOG.error("Unable to login to GSS successfully", e);
-      LOG.error("Aborting start of zeppelin server, as it cannot authenticate itself ", e);
-      System.exit(1);
-    }
 
     return server;
   }

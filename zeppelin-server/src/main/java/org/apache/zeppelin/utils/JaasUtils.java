@@ -36,12 +36,4 @@ public class JaasUtils {
     }
     return null;
   }
-
-  public static void main(String[] args) {
-    try {
-      JaasUtils.jaasConfig("ZeppelinServer", "keyTab");
-    } catch (IOException e) {
-      e.printStackTrace();
-    }
-  }
 }

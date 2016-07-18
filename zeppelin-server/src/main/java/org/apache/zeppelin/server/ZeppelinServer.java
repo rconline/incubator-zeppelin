@@ -18,6 +18,9 @@
 package org.apache.zeppelin.server;
 
 import org.apache.cxf.jaxrs.servlet.CXFNonSpringJaxrsServlet;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.security.SecurityUtil;
+import org.apache.hadoop.security.authorize.PolicyProvider;
 import org.apache.zeppelin.conf.ZeppelinConfiguration;
 import org.apache.zeppelin.conf.ZeppelinConfiguration.ConfVars;
 import org.apache.zeppelin.dep.DependencyResolver;
@@ -32,6 +35,7 @@ import org.apache.zeppelin.search.LuceneSearch;
 import org.apache.zeppelin.search.SearchService;
 import org.apache.zeppelin.socket.NotebookServer;
 import org.apache.zeppelin.user.Credentials;
+import org.apache.zeppelin.utils.JaasUtils;
 import org.apache.zeppelin.utils.SecurityUtils;
 import org.eclipse.jetty.http.HttpVersion;
 import org.eclipse.jetty.server.*;
@@ -71,6 +75,22 @@ public class ZeppelinServer extends Application {
   private NotebookAuthorization notebookAuthorization;
   private Credentials credentials;
   private DependencyResolver depResolver;
+  private static String ZEPPELIN_SERVER_LOGIN_CONTEXT = "ZeppelinServer";
+  private static String KEYTAB = "keyTab";
+  private static String PRINCIPAL = "principal";
+
+  private static Configuration createKerberosConfig() {
+    Configuration conf = new Configuration();
+    try {
+      String keyTab = JaasUtils.jaasConfig(ZEPPELIN_SERVER_LOGIN_CONTEXT, KEYTAB);
+      String principal = JaasUtils.jaasConfig(ZEPPELIN_SERVER_LOGIN_CONTEXT, PRINCIPAL);
+      conf.set(keyTab, keyTab);
+      conf.set(principal, principal);
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+    return conf;
+  }
 
   public ZeppelinServer() throws Exception {
     ZeppelinConfiguration conf = ZeppelinConfiguration.create();
@@ -80,6 +100,7 @@ public class ZeppelinServer extends Application {
     this.schedulerFactory = new SchedulerFactory();
     this.replFactory = new InterpreterFactory(conf, notebookWsServer,
             notebookWsServer, depResolver);
+
     this.notebookRepo = new NotebookRepoSync(conf);
     this.notebookIndex = new LuceneSearch();
     this.notebookAuthorization = new NotebookAuthorization(conf);
@@ -120,8 +141,9 @@ public class ZeppelinServer extends Application {
     }
     LOG.info("Done, zeppelin server started");
 
-    Runtime.getRuntime().addShutdownHook(new Thread(){
-      @Override public void run() {
+    Runtime.getRuntime().addShutdownHook(new Thread() {
+      @Override
+      public void run() {
         LOG.info("Shutting down Zeppelin Server ... ");
         try {
           jettyWebServer.stop();
@@ -170,9 +192,9 @@ public class ZeppelinServer extends Application {
       httpsConfig.addCustomizer(src);
 
       connector = new ServerConnector(
-              server,
-              new SslConnectionFactory(getSslContextFactory(conf), HttpVersion.HTTP_1_1.asString()),
-              new HttpConnectionFactory(httpsConfig));
+        server,
+        new SslConnectionFactory(getSslContextFactory(conf), HttpVersion.HTTP_1_1.asString()),
+        new HttpConnectionFactory(httpsConfig));
 
 
     } else {
@@ -187,8 +209,23 @@ public class ZeppelinServer extends Application {
     connector.setSoLingerTime(-1);
     connector.setHost(conf.getServerAddress());
     connector.setPort(conf.getServerPort());
-
     server.addConnector(connector);
+
+    try {
+
+      final boolean isKerberos = conf.getBoolean("ZEPPELIN_KERBEREOS_ENABLED");
+      // handle secure cluster credentials
+      if (isKerberos) {
+        SecurityUtil.login(createKerberosConfig(),
+          JaasUtils.jaasConfig(ZEPPELIN_SERVER_LOGIN_CONTEXT, KEYTAB),
+          JaasUtils.jaasConfig(ZEPPELIN_SERVER_LOGIN_CONTEXT, PRINCIPAL));
+        LOG.info("Login successful.");
+      }
+    } catch (Exception e) {
+      LOG.error("Unable to login to GSS successfully", e);
+      LOG.error("Aborting start of zeppelin server, as it cannot authenticate itself ", e);
+      System.exit(1);
+    }
 
     return server;
   }
@@ -201,7 +238,7 @@ public class ZeppelinServer extends Application {
     servletHolder.setInitParameter("maxTextMessageSize", maxTextMessageSize);
 
     final ServletContextHandler cxfContext = new ServletContextHandler(
-        ServletContextHandler.SESSIONS);
+      ServletContextHandler.SESSIONS);
 
     webapp.addServlet(servletHolder, "/ws/*");
   }
@@ -237,11 +274,11 @@ public class ZeppelinServer extends Application {
     webapp.addServlet(cxfServletHolder, "/api/*");
 
     webapp.setInitParameter("shiroConfigLocations",
-        new File(conf.getShiroPath()).toURI().toString());
+      new File(conf.getShiroPath()).toURI().toString());
 
     SecurityUtils.initSecurityManager(conf.getShiroPath());
     webapp.addFilter(org.apache.shiro.web.servlet.ShiroFilter.class, "/api/*",
-        EnumSet.allOf(DispatcherType.class));
+      EnumSet.allOf(DispatcherType.class));
 
     webapp.addEventListener(new org.apache.shiro.web.env.EnvironmentLoaderListener());
 
@@ -271,7 +308,7 @@ public class ZeppelinServer extends Application {
     contexts.addHandler(webApp);
 
     webApp.addFilter(new FilterHolder(CorsFilter.class), "/*",
-        EnumSet.allOf(DispatcherType.class));
+      EnumSet.allOf(DispatcherType.class));
 
     return webApp;
 

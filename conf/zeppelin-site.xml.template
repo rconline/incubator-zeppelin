@@ -271,5 +271,12 @@
   <description>Size in characters of the maximum text message to be received by websocket. Defaults to 1024000</description>
 </property>
 
+<property>
+  <name>zeppelin.kerbereos.enabled</name>
+  <value>true</value>
+  <description>Set the value to true or false based on the security configurations</description>
+</property>
+
+
 </configuration>
 

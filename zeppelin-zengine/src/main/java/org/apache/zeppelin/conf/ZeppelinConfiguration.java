@@ -546,7 +546,8 @@ public class ZeppelinConfiguration extends XMLConfiguration {
     ZEPPELIN_ANONYMOUS_ALLOWED("zeppelin.anonymous.allowed", true),
     ZEPPELIN_CREDENTIALS_PERSIST("zeppelin.credentials.persist", true),
     ZEPPELIN_WEBSOCKET_MAX_TEXT_MESSAGE_SIZE("zeppelin.websocket.max.text.message.size", "1024000"),
-    ZEPPELIN_USE_JDBC_ALIAS("zeppelin.use.jdbc.alias", true);
+    ZEPPELIN_USE_JDBC_ALIAS("zeppelin.use.jdbc.alias", true),
+    ZEPPELIN_KERBEREOS_ENABLED("zeppelin.kerbereos.enabled", false);
 
 
     private String varName;
